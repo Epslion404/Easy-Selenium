@@ -1,0 +1,22 @@
+# 跳转到登录页
+jump https://example.com/login
+delay 1
+
+# 点击用户名、输入
+L_click XPATH //input[@name="username"]
+write XPATH //input[@name="username"] test_user
+
+# 点击密码、输入
+L_click CSS input[type="password"]
+write CSS input[type="password"] 123456
+
+# 提交
+L_click CSS button.submit
+delay 2
+
+# 悬停某个菜单并双击子项
+put CSS .menu
+D_click LINK 子页面
+
+# 完成后保持浏览器打开
+keep_open
