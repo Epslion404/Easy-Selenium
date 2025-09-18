@@ -141,3 +141,9 @@ cython_debug/
 release-exe/
 
 # config file
+
+
+# test file
+msedgedriver.exe
+chromedriver.exe
+command.txt

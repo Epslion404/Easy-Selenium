@@ -4,6 +4,8 @@
 .\.venv\Scripts\python.exe -m pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 .\.venv\Scripts\python.exe -m pip install selenium
+.\.venv\Scripts\python.exe -m pip install Nuitka
+.\.venv\Scripts\python.exe -m pip install requests
 
 .\.venv\Scripts\python.exe --version
 echo Done!
