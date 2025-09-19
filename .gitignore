@@ -141,9 +141,14 @@ cython_debug/
 release-exe/
 
 # config file
-
+User Data/
+logs/
+profiles/
+C-/
 
 # test file
 msedgedriver.exe
 chromedriver.exe
 command.txt
+run - 副本.bat
+command/cmd1.txt

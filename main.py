@@ -33,6 +33,9 @@ import argparse
 import sys
 import time
 import shlex
+import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import requests
@@ -111,6 +114,95 @@ ALIASES = {
     'keep_open': 'keep_open',
 }
 
+# 微信UA模拟
+WECHAT_ANDROID_UA = (
+    "Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Version/4.0 Chrome/114.0.5735.196 Mobile Safari/537.36 "
+    "MicroMessenger/8.0.44(0x28002c57) Process/appbrand0 WeChat/arm64 NetType/WIFI Language/zh_CN ABI/arm64"
+)
+
+def apply_wechat_headers_only(driver):
+    driver.execute_cdp_cmd("Network.enable", {})
+    driver.execute_cdp_cmd("Network.setExtraHTTPHeaders", {
+        "headers": {
+            "User-Agent":"MicroMessenger",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "X-Requested-With": "com.tencent.mm",
+            "Referer": "https://weixin.qq.com/"
+        }
+    })
+
+def apply_wechat_emulation(driver, ua: str = ''):
+    ua_to_use = ua or WECHAT_ANDROID_UA
+    driver.execute_cdp_cmd("Network.enable", {})
+    # 统一 UA 与 UACH
+    driver.execute_cdp_cmd("Network.setUserAgentOverride", {
+        "userAgent": ua_to_use,
+        "platform": "Android",
+        "userAgentMetadata": {
+            "brands": [
+                {"brand": "Chromium", "version": "114"},
+                {"brand": "Google Chrome", "version": "114"}
+            ],
+            "fullVersion": "114.0.5735.196",
+            "platform": "Android",
+            "platformVersion": "13",
+            "architecture": "arm64",
+            "model": "Pixel 6",
+            "mobile": True
+        }
+    })
+    # 额外 HTTP 头（X-Requested-With）
+    driver.execute_cdp_cmd("Network.setExtraHTTPHeaders", {
+        "headers": {
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "X-Requested-With": "com.tencent.mm",
+            "Referer": "https://weixin.qq.com/",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-User": "?1",
+            "Sec-Fetch-Dest": "document"
+        }
+    })
+    #  模拟移动设备
+    driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
+        "width": 390,
+        "height": 844,
+        "deviceScaleFactor": 3,
+        "mobile": True
+    })
+
+LOCK_FILES = {"SingletonLock", "SingletonCookie", "SingletonSocket", "SingletonStartupLock"}
+
+def normalize_abs_path(p: str) -> str:
+    if not p:
+        return ""
+    return str(Path(p).expanduser().resolve())
+
+def has_lock_files(user_data_dir: str) -> bool:
+    if not user_data_dir:
+        return False
+    p = Path(user_data_dir)
+    return any((p / lf).exists() for lf in LOCK_FILES)
+
+def prepare_unique_user_data_dir(base_dir: str) -> str:
+    """
+    - base_dir 为空：返回空（不使用 user-data-dir）
+    - base_dir 存在锁文件：创建同级唯一临时目录并返回
+    - base_dir 不存在：创建后返回
+    - 否则：返回 base_dir
+    """
+    if not base_dir:
+        return ""
+    base = Path(base_dir).expanduser().resolve()
+    base.mkdir(parents=True, exist_ok=True)
+    if has_lock_files(str(base)):
+        uniq = base.parent / f"{base.name}_{int(time.time())}"
+        uniq.mkdir(parents=True, exist_ok=True)
+        print(f"[提示] 检测到锁文件，改用唯一目录：{uniq}")
+        return str(uniq)
+    return str(base)
 
 def join_rest(parts: List[str], start: int = 0) -> str:
     return ' '.join(parts[start:]) if len(parts) > start else ''
@@ -130,12 +222,45 @@ def parse_float(s: str, name: str = 'number') -> float:
         raise ValueError(f'{name} 必须为数字 -> {s}')
 
 # 生成浏览器驱动
-def build_driver(name: str, driver_path: str, headless: bool = False):
+def build_driver(name: str, driver_path: str, ua: str, user_data: str, profile_data: str,
+                 anti_ac: bool = False, headless: bool = False, net_harden: bool = False, netlog_path: str = "",
+                 debugger_address: str = ""):
     name = name.lower()
     if name == 'edge':
         options = EdgeOptions()
         if headless:
             options.add_argument('--headless=new')
+        if debugger_address:
+            # 附着模式,只设置debuggerAddress
+            options.add_experimental_option("debuggerAddress", debugger_address)
+        else:
+            # 非附着可设置
+            if ua:
+                options.add_argument(f'--user-agent={ua}')
+            if anti_ac:
+                # 这些在附着模式下会报错，这里仅在非附着模式配置
+                options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                options.add_experimental_option("useAutomationExtension", False)
+                options.add_argument("--disable-blink-features=AutomationControlled")
+            if user_data:
+                options.add_argument(f"--user-data-dir={user_data}")
+            if profile_data:
+                options.add_argument(f"--profile-directory={profile_data}")
+
+        # 网络稳态
+        if net_harden:
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument('--allow-insecure-localhost')
+            options.add_argument('--disable-quic')
+            options.add_argument('--disable-http2')
+            options.add_argument('--disable-features=TLS13EarlyData')
+            options.set_capability("acceptInsecureCerts", True)
+        if netlog_path:
+            netlog_path = str(Path(netlog_path).expanduser().resolve())
+            Path(netlog_path).parent.mkdir(parents=True, exist_ok=True)
+            options.add_argument(f'--log-net-log={netlog_path}')
+            options.add_argument('--net-log-capture-mode=IncludeCookiesAndCredentials')
+
         service = EdgeService(executable_path=driver_path) if driver_path else EdgeService()
         return webdriver.Edge(service=service, options=options)
 
@@ -143,7 +268,35 @@ def build_driver(name: str, driver_path: str, headless: bool = False):
         options = ChromeOptions()
         if headless:
             options.add_argument('--headless=new')
+        if debugger_address:
+            options.add_experimental_option("debuggerAddress", debugger_address)
+        else:
+            if ua:
+                options.add_argument(f'--user-agent={ua}')
+            if anti_ac:
+                options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                options.add_experimental_option("useAutomationExtension", False)
+                options.add_argument("--disable-blink-features=AutomationControlled")
+            if user_data:
+                options.add_argument(f"--user-data-dir={user_data}")
+            if profile_data:
+                options.add_argument(f"--profile-directory={profile_data}")
+
         options.add_argument('--disable-gpu')
+
+        if net_harden:
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument('--allow-insecure-localhost')
+            options.add_argument('--disable-quic')
+            options.add_argument('--disable-http2')
+            options.add_argument('--disable-features=TLS13EarlyData')
+            options.set_capability("acceptInsecureCerts", True)
+        if netlog_path:
+            netlog_path = str(Path(netlog_path).expanduser().resolve())
+            Path(netlog_path).parent.mkdir(parents=True, exist_ok=True)
+            options.add_argument(f'--log-net-log={netlog_path}')
+            options.add_argument('--net-log-capture-mode=IncludeCookiesAndCredentials')
+
         service = ChromeService(executable_path=driver_path) if driver_path else ChromeService()
         return webdriver.Chrome(service=service, options=options)
 
@@ -151,6 +304,13 @@ def build_driver(name: str, driver_path: str, headless: bool = False):
         options = FirefoxOptions()
         if headless:
             options.add_argument('--headless')
+        if ua != '':
+            options.add_argument(f'--user-agent={ua}')
+            options.add_argument("--disable-blink-features=AutomationControlled")
+        if user_data != '':
+            options.add_argument(f"--user-data-dir={user_data}")
+        if profile_data != '':
+            options.add_argument(f"--profile-directory={profile_data}")
         service = FirefoxService(executable_path=driver_path) if driver_path else FirefoxService()
         return webdriver.Firefox(service=service, options=options)
 
@@ -158,10 +318,11 @@ def build_driver(name: str, driver_path: str, headless: bool = False):
 
 
 class CommandExecutor:
-    def __init__(self, driver, default_timeout: int = 15):
+    def __init__(self, driver, default_timeout: int = 15, user_agent: str = ""):
         self.driver = driver
         self.default_timeout = default_timeout
         self._keep_open = False
+        self.user_agent = user_agent
 
     @property
     def keep_open(self) -> bool:
@@ -410,6 +571,16 @@ class CommandExecutor:
     # Cookie
     def cmd_cookie_set(self, name: str, value: str):
         self.driver.add_cookie({'name': name, 'value': value})
+    
+    def cmd_cookies_set(self, values: str):
+        for i in values.split(';'):
+            res = i.split(':')
+            if len(res) != 2:
+                raise AssertionError(f'cookie添加失败：未知格式 -> {i}')
+            else:
+                res[0].replace(" ","")
+                res[1].replace(" ","")
+                self.driver.add_cookie({'name':res[0], 'value':res[1]})
 
     def cmd_cookie_get(self, name: str):
         c = self.driver.get_cookie(name)
@@ -571,6 +742,8 @@ class CommandExecutor:
             # Cookie
             elif cmd == 'cookie_set':
                 self.cmd_cookie_set(parts[1], parts[2])
+            elif cmd == 'cookies_set':
+                self.cmd_cookies_set(parts[1])
             elif cmd == 'cookie_get':
                 self.cmd_cookie_get(parts[1])
             elif cmd == 'cookie_delete':
@@ -651,6 +824,14 @@ def main():
     parser.add_argument('--version', action='store_true', help='展示版本')
     parser.add_argument('-v', action='store_true', help='展示版本')
     parser.add_argument("--install-driver", action='store_true', help="安装浏览器驱动（edge, chrome）")
+    parser.add_argument('--user-agent', type=str, help="User-Agent")
+    parser.add_argument('--anti-ac', action='store_true', default=False, help="反“反爬虫”")
+    parser.add_argument('--user-data', type=str, default="", help='用户数据文件夹')
+    parser.add_argument('--profile-data', type=str, default="", help='用户资料文件夹')
+    parser.add_argument('--weixin-emu', action='store_true', help='启用微信移动端仿真（UA+UACH+设备）')
+    parser.add_argument('--net-harden', action='store_true', help='启用网络栈容错（禁QUIC、忽略证书错误等）')
+    parser.add_argument('--netlog', type=str, default='', help='写出 Chrome NetLog 到文件（可选）')
+    parser.add_argument('--debugger-address', type=str, default='', help='附着调试地址，如 127.0.0.1:9222')
     args = parser.parse_args()
 
     driver = None
@@ -671,8 +852,43 @@ def main():
             exit_flag = True
             return None
 
+        # 规范化user-data-dir
+        final_user_data = normalize_abs_path(args.user_data) if args.user_data else ""
+        if final_user_data:
+            final_user_data = prepare_unique_user_data_dir(final_user_data)
+            print(f"使用的用户数据目录：{final_user_data}")
 
-        driver = build_driver(args.driver, args.driver_path, headless=args.headless)
+        # profile-data：对于“新建目录”请不要强制传；若你要复用真实目录才需要。
+        final_profile = args.profile_data if args.profile_data else ""
+
+        
+        driver = build_driver(
+            args.driver,
+            args.driver_path,
+            args.user_agent,
+            final_user_data,
+            final_profile,
+            anti_ac=args.anti_ac,
+            headless=args.headless,
+            net_harden=args.net_harden,
+            netlog_path=args.netlog,
+            debugger_address=args.debugger_address
+        )
+
+        if args.weixin_emu:
+            # 若命令行无 --user-agent，则使用内置 ANDROID 微信 UA
+            # apply_wechat_emulation(driver, ua=args.user_agent if args.user_agent else "")
+            apply_wechat_headers_only(driver)
+
+
+        if args.anti_ac:
+            driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                "source": """
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined})
+                    Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en-US', 'en'] });
+                    Object.defineProperty(navigator, 'plugins',   { get: () => [1,2,3,4,5] });
+                    """
+            })
 
         if args.maximize and not args.headless:
             try:
@@ -687,7 +903,7 @@ def main():
         executor.run_file(args.commands)
 
         if executor.keep_open:
-            print('执行完成（保持打开）。按 Ctrl+C 退出，或关闭浏览器窗口。')
+            print('执行完成，保持打开。按 Ctrl+C 退出，或关闭浏览器窗口。')
             try:
                 while True:
                     time.sleep(1)
