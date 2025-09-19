@@ -1,28 +1,29 @@
 # Easy Selenium
 
 #### 介绍
+
 命令式网页自动化，源于高中遗留项目，Powered by GPT-5
 
 #### 软件架构
-使用python 3.10.10开发
 
+使用python 3.10.10开发
 
 #### 安装教程
 
-下载最新release文件，在命令行使用本软件即可
+下载最新release文件
 
 #### 使用说明
 
-1.  打开cmd，定位到本软件目录
-2.  创建命令文件，写入执行命令
-3.  配置参数，启动软件
-4.  完成任务
+1. 解压本软件
+2. 在commands文件夹内新建命令文件（文本文件`.txt`即可）
+3. 回到上一级文件夹修改`run.bat`内容，将`--commands .\command\cmd1.txt`中的'`cmd1.txt`改为你刚刚新建的命令文件
+4. 自定义其他参数
+5. 运行`run.bat`，等待任务完成
 
 #### 参与贡献
 
 1.  me
 2.  GPT-5
-
 
 #### 特性
 
@@ -92,7 +93,7 @@
   - echo: `echo "消息"`
 
 - Cookie
-  - cookie_set/cookie_get/cookie_delete/cookie_clear
+  - cookie_set/cookies_set/cookie_get/cookie_delete/cookie_clear
 
 - 其他
   - sleep: `sleep <seconds>`
@@ -128,6 +129,10 @@
   - 查询表达式错误：BY 与 selector 不匹配或 selector 语法错误
   - 不可交互：元素不可见/被遮挡/禁用
   - 参数不足/格式错误：命令参数缺失或类型不正确
+
+在此引用文章：  
+[XPATH教程](https://blog.csdn.net/weixin_43865008/article/details/115332404)(tips:在开发者工具（按下F12里右键元素即可复制完整Xpath）)  
+[CSS选择器教程](https://blog.csdn.net/qq_45914609/article/details/142342792)  
 
 ---
 
@@ -628,7 +633,7 @@
 - ID/NAME/CLASS/TAG：`ID login-btn`、`NAME username`、`CLASS item`、`TAG input`
 - LINK/PLINK：`LINK "下载"`（全匹配）、`PLINK "下"`（包含）
 
-建议优先选用稳定的定位（ID、data-* 属性、语义明确的 CSS）。
+建议优先选用稳定的定位（ID、data-* 属性、语义明确的 CSS），或者直接复制元素的完整Xpath。
 
 ---
 
