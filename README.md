@@ -1,5 +1,7 @@
 # Easy Selenium
 
+[Gitee](https://gitee.com/Nept-Epslion/easy-selenium)
+
 #### 介绍
 
 命令式网页自动化，源于高中遗留项目，Powered by GPT-5
