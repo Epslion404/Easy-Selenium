@@ -121,23 +121,10 @@ WECHAT_ANDROID_UA = (
     "MicroMessenger/8.0.44(0x28002c57) Process/appbrand0 WeChat/arm64 NetType/WIFI Language/zh_CN ABI/arm64"
 )
 
-def apply_wechat_headers_only(driver):
+def set_ua_via_cdp(driver, ua: str):
     driver.execute_cdp_cmd("Network.enable", {})
-    driver.execute_cdp_cmd("Network.setExtraHTTPHeaders", {
-        "headers": {
-            "User-Agent":"MicroMessenger",
-            "Accept-Language": "zh-CN,zh;q=0.9",
-            "X-Requested-With": "com.tencent.mm",
-            "Referer": "https://weixin.qq.com/"
-        }
-    })
-
-def apply_wechat_emulation(driver, ua: str = ''):
-    ua_to_use = ua or WECHAT_ANDROID_UA
-    driver.execute_cdp_cmd("Network.enable", {})
-    # 统一 UA 与 UACH
     driver.execute_cdp_cmd("Network.setUserAgentOverride", {
-        "userAgent": ua_to_use,
+        "userAgent": ua,
         "platform": "Android",
         "userAgentMetadata": {
             "brands": [
@@ -152,25 +139,12 @@ def apply_wechat_emulation(driver, ua: str = ''):
             "mobile": True
         }
     })
-    # 额外 HTTP 头（X-Requested-With）
     driver.execute_cdp_cmd("Network.setExtraHTTPHeaders", {
         "headers": {
             "Accept-Language": "zh-CN,zh;q=0.9",
             "X-Requested-With": "com.tencent.mm",
-            "Referer": "https://weixin.qq.com/",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-User": "?1",
-            "Sec-Fetch-Dest": "document"
+            "Referer": "https://weixin.qq.com/"
         }
-    })
-    #  模拟移动设备
-    driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
-        "width": 390,
-        "height": 844,
-        "deviceScaleFactor": 3,
-        "mobile": True
     })
 
 LOCK_FILES = {"SingletonLock", "SingletonCookie", "SingletonSocket", "SingletonStartupLock"}
@@ -878,7 +852,7 @@ def main():
         if args.weixin_emu:
             # 若命令行无 --user-agent，则使用内置 ANDROID 微信 UA
             # apply_wechat_emulation(driver, ua=args.user_agent if args.user_agent else "")
-            apply_wechat_headers_only(driver)
+            set_ua_via_cdp(driver, 'MicroMessenger')
 
 
         if args.anti_ac:
