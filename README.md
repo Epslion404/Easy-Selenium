@@ -1,5 +1,7 @@
 # Easy Selenium
 
+[Github](https://github.com/Epslion404/Easy-Selenium)
+
 #### 介绍
 
 命令式网页自动化，源于高中遗留项目，Powered by GPT-5
