@@ -928,6 +928,7 @@ def main():
     parser.add_argument('--net-harden', action='store_true', help='启用网络栈容错（禁QUIC、忽略证书错误等）')
     parser.add_argument('--netlog', type=str, default='', help='写出 Chrome NetLog 到文件（可选）')
     parser.add_argument('--debugger-address', type=str, default='', help='附着调试地址，如 127.0.0.1:9222')
+    parser.add_argument('--error-no-exit', action='store_true', help='发生错误不退出')
     args = parser.parse_args()
 
     driver = None
@@ -1008,7 +1009,15 @@ def main():
 
     except Exception as e:
         print(f'[错误] {e}', file=sys.stderr)
-        sys.exit(1)
+        if args.error_no_exit:
+            print('执行完成，保持打开。按 Ctrl+C 退出，或关闭浏览器窗口。')
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                pass
+        else:
+            sys.exit(1)
     finally:
         if exit_flag:
             return None
