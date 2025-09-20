@@ -439,31 +439,31 @@ class CommandExecutor:
         self.driver.close()
 
     # 等待（Explicit Wait）
-    def cmd_wait_present(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_present(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.presence_of_element_located((self._get_by(by_key), selector)))
 
-    def cmd_wait_visible(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_visible(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.visibility_of_element_located((self._get_by(by_key), selector)))
 
-    def cmd_wait_clickable(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_clickable(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.element_to_be_clickable((self._get_by(by_key), selector)))
 
-    def cmd_wait_invisible(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_invisible(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.invisibility_of_element_located((self._get_by(by_key), selector)))
 
-    def cmd_wait_text(self, by_key: str, selector: str, text: str, timeout: str = None):
+    def cmd_wait_text(self, by_key: str, selector: str, text: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.text_to_be_present_in_element((self._get_by(by_key), selector), text))
 
-    def cmd_wait_url_contains(self, substr: str, timeout: str = None):
+    def cmd_wait_url_contains(self, substr: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.url_contains(substr))
 
-    def cmd_wait_title_contains(self, substr: str, timeout: str = None):
+    def cmd_wait_title_contains(self, substr: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.title_contains(substr))
 
