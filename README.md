@@ -1,6 +1,6 @@
 # Easy Selenium
 
-[Github](https://github.com/Epslion404/Easy-Selenium)
+[Gitee](https://gitee.com/Nept-Epslion/easy-selenium)
 
 #### 介绍
 
