@@ -35,6 +35,28 @@
 - 引号与空格：命令使用 shlex 解析，参数可包含空格与中文。
 - 默认等待超时时间：15s
 
+#### 启动参数
+
+- `--driver`：启动浏览器类型，支持edge、chrome、firefox（可选，默认为edge）
+- `--driver-path`：浏览器驱动程序路径（可选，默认为同级文件夹下的edge驱动）
+- `--start-url`：启动后访问的初始 URL（可选，默认为空）
+- `--commands`：命令文件路径（可选，默认为同级下的`command.txt`）
+- `--maximize`：启动后最大化窗口（可选）
+- `--headless`：无头模式启动，即不打开浏览器窗口（可选）
+- `--timeout`：超时时间，（可选，默认为15s）
+- `--version`或`-v`：显示软件版本
+- `--download-driver`：下载浏览器驱动文件，支持edge与chrome
+- `--user-agent`：设置UA
+- `--anti-ac`：反“反爬虫”
+- `--user-data`：用户浏览器数据文件夹路径（可选，默认为空）
+- `--profile-data`：用户资料文件夹路径（可选，默认为空）
+- `--weixin-emu`：启动微信浏览器仿真
+- `--net-harden`：启用网络栈容错（禁QUIC、忽略证书错误等）
+- `--netlog`：写出 Chrome NetLog 到文件（可选）
+- `--debugger-address`：附着调试地址
+- `--error-no-quit`：命令错误时暂停，不退出
+- `--ignore-error`：忽略错误命令，出错时继续运行
+
 #### 命令语法
 
 ##### 速览

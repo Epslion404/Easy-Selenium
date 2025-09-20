@@ -31,11 +31,9 @@
 
 import argparse
 import sys
+import re
 import time
 import shlex
-import os
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import requests
@@ -146,6 +144,9 @@ COMMAND_SPECS = {
     'sleep':                CommandSpec('cmd_sleep',                1, 1),
     'pause':                CommandSpec('cmd_pause',                0, 0),
     'keep_open':            CommandSpec('cmd_keep_open',            0, 0),
+
+    # 实用
+    'set_var':              CommandSpec('cmd_set_var',              2, 2),
 }
 
 VERSION = "v1.0.0"
@@ -385,12 +386,14 @@ def build_driver(name: str, driver_path: str, ua: str, user_data: str, profile_d
 
 
 class CommandExecutor:
-    def __init__(self, driver, default_timeout: int = 15, user_agent: str = ""):
+    def __init__(self, driver, ignore_error: bool = False, default_timeout: int = 15, user_agent: str = ""):
         self.driver = driver
         self.default_timeout = default_timeout
         self._keep_open = False
+        self._ginore_error = ignore_error
         self.user_agent = user_agent
-        self.cmd_set = {}
+        self._var_set: Dict[str, Any] = {}
+        self._fliter: re.Pattern = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\|([A-Za-z0-9_|:%\-\.\+]+))?\}')
 
     @property
     def keep_open(self) -> bool:
@@ -815,6 +818,23 @@ class CommandExecutor:
 
     def cmd_keep_open(self):
         self._keep_open = True
+    
+    def cmd_set_var(self, name: str, var: Any):
+        self._var_set[name] = var
+    
+    def _var_filter(self, part: str):
+        if not part or "${" not in part:
+            return part
+        result = self._fliter.search(part)
+        if result == None:
+            return part
+        else:
+            name = part[result.span()[0]: result.span()[1]]
+            try:
+                part = part.replace(name, str(self._var_set[name[2:-1]]), 1)
+                return self._var_filter(part)
+            except KeyError as e:
+                raise RuntimeError(f'变量未定义 -> {e}')
 
     # 运行一行命令
     def run_line(self, line: str):
@@ -825,6 +845,9 @@ class CommandExecutor:
         parts = shlex.split(s, posix=True)
         if not parts:
             return
+
+        for i in range(len(parts)):
+            parts[i] = self._var_filter(parts[i])
 
         raw_cmd = parts[0]
         cmd = ALIASES.get(raw_cmd, raw_cmd).lower()
@@ -859,17 +882,35 @@ class CommandExecutor:
             func(*args)
 
         except KeyError as e:
-            raise ValueError(str(e))
+            if self._ginore_error:
+                print(f"值错误 -> {e}，继续运行")
+            else:
+                raise ValueError(str(e))
         except selerr.NoSuchElementException:
-            raise RuntimeError(f'找不到元素 -> {s}')
+            if self._ginore_error:
+                print(f"找不到元素 -> {s}，继续运行")
+            else:
+                raise RuntimeError(f'找不到元素 -> {s}')
         except selerr.InvalidSelectorException:
-            raise RuntimeError(f'查询表达式错误 -> {s}')
+            if self._ginore_error:
+                print(f"查询表达式错误 -> {s}，继续运行")
+            else:
+                raise RuntimeError(f'查询表达式错误 -> {s}')
         except selerr.ElementNotInteractableException:
-            raise RuntimeError(f'不可交互 -> {s}')
+            if self._ginore_error:
+                print(f"不可交互 -> {s}，继续运行")
+            else:
+                raise RuntimeError(f'不可交互 -> {s}')
         except selerr.InvalidArgumentException:
-            raise RuntimeError(f'无效参数 -> {s}')
+            if self._ginore_error:
+                print(f"无效参数 -> {s}，继续运行")
+            else:
+                raise RuntimeError(f'无效参数 -> {s}')
         except selerr.TimeoutException:
-            raise RuntimeError(f'等待超时 -> {s}')
+            if self._ginore_error:
+                print(f"等待超时 -> {s}，继续运行")
+            else:
+                raise RuntimeError(f'等待超时 -> {s}')
 
     def run_file(self, command_path: str):
         p = Path(command_path)
@@ -911,7 +952,7 @@ def get_driver(browser: str, ver_b: str, ver_s: str):
 def main():
     parser = argparse.ArgumentParser(description='命令式网页自动化执行器')
     parser.add_argument('--driver', type=str, default='edge', choices=['edge', 'chrome', 'firefox'], help='浏览器类型')
-    parser.add_argument('--driver-path', type=str, default='', help='浏览器驱动路径（可选）')
+    parser.add_argument('--driver-path', type=str, default='msedgedriver.exe', help='浏览器驱动路径（可选）')
     parser.add_argument('--start-url', type=str, default='', help='启动后访问的初始 URL（可选）')
     parser.add_argument('--commands', type=str, default="command.txt", help='命令脚本文件路径')
     parser.add_argument('--maximize', action='store_true', help='启动后最大化窗口')
@@ -919,7 +960,7 @@ def main():
     parser.add_argument('--timeout', type=int, default=15, help='默认显式等待超时秒数')
     parser.add_argument('--version', action='store_true', help='展示版本')
     parser.add_argument('-v', action='store_true', help='展示版本')
-    parser.add_argument("--install-driver", action='store_true', help="安装浏览器驱动（edge, chrome）")
+    parser.add_argument("--download-driver", action='store_true', help="安装浏览器驱动（edge, chrome）")
     parser.add_argument('--user-agent', type=str, help="User-Agent")
     parser.add_argument('--anti-ac', action='store_true', default=False, help="反“反爬虫”")
     parser.add_argument('--user-data', type=str, default="", help='用户数据文件夹')
@@ -928,7 +969,8 @@ def main():
     parser.add_argument('--net-harden', action='store_true', help='启用网络栈容错（禁QUIC、忽略证书错误等）')
     parser.add_argument('--netlog', type=str, default='', help='写出 Chrome NetLog 到文件（可选）')
     parser.add_argument('--debugger-address', type=str, default='', help='附着调试地址，如 127.0.0.1:9222')
-    parser.add_argument('--error-no-exit', action='store_true', help='发生错误不退出')
+    parser.add_argument('--error-no-quit', action='store_true', default=False, help='发生错误不关闭浏览器')
+    parser.add_argument('--ignore-error', action='store_true', default=False, help='忽略并跳过发生错误的语句')
     args = parser.parse_args()
 
     driver = None
@@ -939,7 +981,7 @@ def main():
             exit_flag = True
             return None
         
-        if args.install_driver:
+        if args.download_driver:
             browser = input("请输入目标浏览器(edge、chrome)：")
             ver_browser = input("请输入你的浏览器版本号：")
             ver_sys = input("请输入你的系统版本(win32、win64、arm64)：")
@@ -996,7 +1038,7 @@ def main():
         if args.start_url:
             driver.get(args.start_url)
 
-        executor = CommandExecutor(driver, default_timeout=args.timeout)
+        executor = CommandExecutor(driver, args.ignore_error, default_timeout=args.timeout)
         executor.run_file(args.commands)
 
         if executor.keep_open:
@@ -1009,7 +1051,7 @@ def main():
 
     except Exception as e:
         print(f'[错误] {e}', file=sys.stderr)
-        if args.error_no_exit:
+        if args.quit:
             print('发生错误，保持打开。按 Ctrl+C 退出，或关闭浏览器窗口。')
             try:
                 while True:
