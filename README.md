@@ -47,6 +47,8 @@
   - clear: `clear <BY> <selector>`
   - send_keys: `send_keys <BY> <selector> <keys...>`
   - press: `press <keys...>`（发给当前焦点元素）
+  - write_ce：`write_ce <BY> <selector> "<text 可含空格>"`（专门处理div输入框）
+  - write_js：`write_js <BY> <selector> "<text 可含空格>"`（通用 JS 写入）
   - 支持键名：`{ENTER} {TAB} {ESC} CTRL_A CTRL_C CTRL_V ...`；普通文本可用引号。
 
 - 拖拽
@@ -240,6 +242,22 @@
   ```text
   press {CTRL} "l"
   press CTRL_A {DELETE}
+  ```
+
+### write_ce
+- 语法：`write_ce <BY> <selector> "<text>"`
+- 说明：向div输入框输入文本；文本可包含空格
+- 示例：
+  ```text
+  write_ce CSS div[name="q"][contenteditable="true"] "关键字 搜索"
+  ```
+
+### write_js
+- 语法：`write_ce <BY> <selector> "<text>"`
+- 说明：通用 js 写入；文本可包含空格
+- 示例：
+  ```text
+  write_js CSS .example-input "关键字 搜索"
   ```
 
 ### drag_drop

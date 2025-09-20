@@ -55,9 +55,102 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass(frozen=True)
+class CommandSpec:
+    func: str                 # CommandExecutor 的方法名
+    min_args: int = 0         # 最少参数数（不含命令名）
+    max_args: Optional[int] = None  # 最多参数数，None 表示不限
+    join_from: Optional[int] = None # 将 args[join_from:] 用空格合并为一个参数
+
+# 命令表
+COMMAND_SPECS = {
+    # 元素点击与输入
+    'click':                CommandSpec('cmd_click',                2, 2),
+    'rclick':               CommandSpec('cmd_rclick',               2, 2),
+    'dclick':               CommandSpec('cmd_dclick',               2, 2),
+    'hover':                CommandSpec('cmd_hover',                2, 2),
+    'click_js':             CommandSpec('cmd_click_js',             2, 2),
+    'clear':                CommandSpec('cmd_clear',                2, 2),
+    # write 文本可能包含空格，因此不限最大参数数，给 cmd_write 内部 join
+    'write':                CommandSpec('cmd_write',                3, None),
+    'send_keys':            CommandSpec('cmd_send_keys',            3, None),
+    'press':                CommandSpec('cmd_press',                1, None),
+    'write_ce':             CommandSpec('cmd_write_ce', 3, None, join_from=2),
+    'write_js':             CommandSpec('cmd_write_js', 3, None, join_from=2),
+
+    # 拖拽
+    'drag_drop':            CommandSpec('cmd_drag_drop',            4, 4),
+    'drag_offset':          CommandSpec('cmd_drag_offset',          4, 4),
+
+    # 导航与窗口
+    'goto':                 CommandSpec('cmd_goto',                 1, 1),
+    'back':                 CommandSpec('cmd_back',                 0, 0),
+    'forward':              CommandSpec('cmd_forward',              0, 0),
+    'refresh':              CommandSpec('cmd_refresh',              0, 0),
+    'maximize':             CommandSpec('cmd_maximize',             0, 0),
+    'minimize':             CommandSpec('cmd_minimize',             0, 0),
+    'set_window':           CommandSpec('cmd_set_window',           2, 2),
+
+    # Frame
+    'frame':                CommandSpec('cmd_frame',                2, 2),
+    'frame_index':          CommandSpec('cmd_frame_index',          1, 1),
+    'frame_parent':         CommandSpec('cmd_frame_parent',         0, 0),
+    'frame_default':        CommandSpec('cmd_frame_default',        0, 0),
+
+    # 窗口（Tab）
+    'window_latest':        CommandSpec('cmd_window_latest',        0, 0),
+    'window_index':         CommandSpec('cmd_window_index',         1, 1),
+    'window_close':         CommandSpec('cmd_window_close',         0, 0),
+
+    # 等待（注意：wait_text 的 text 建议在命令文件中用引号，shlex 会当作一个参数传入）
+    'wait_present':         CommandSpec('cmd_wait_present',         2, 3),
+    'wait_visible':         CommandSpec('cmd_wait_visible',         2, 3),
+    'wait_clickable':       CommandSpec('cmd_wait_clickable',       2, 3),
+    'wait_invisible':       CommandSpec('cmd_wait_invisible',       2, 3),
+    'wait_text':            CommandSpec('cmd_wait_text',            3, 4),
+
+    # 滚动
+    'scroll_into_view':     CommandSpec('cmd_scroll_into_view',     2, 3),
+    'scroll_by':            CommandSpec('cmd_scroll_by',            2, 2),
+    'scroll_top':           CommandSpec('cmd_scroll_top',           0, 0),
+    'scroll_bottom':        CommandSpec('cmd_scroll_bottom',        0, 0),
+
+    # 下拉选择
+    'select':               CommandSpec('cmd_select',               4, 4),
+
+    # 上传/截图/JS（exec_js 需要把剩余合并成一个脚本参数）
+    'upload':               CommandSpec('cmd_upload',               3, 3),
+    'screenshot':           CommandSpec('cmd_screenshot',           1, 1),
+    'screenshot_element':   CommandSpec('cmd_screenshot_element',   3, 3),
+    'exec_js':              CommandSpec('cmd_exec_js',              1, None, join_from=0),
+
+    # 断言/打印（可能包含空格的内容需要 join）
+    'assert_text':          CommandSpec('cmd_assert_text',          3, None, join_from=2),
+    'assert_url_contains':  CommandSpec('cmd_assert_url_contains',  1, None, join_from=0),
+    'assert_title_contains':CommandSpec('cmd_assert_title_contains',1, None, join_from=0),
+    'print_text':           CommandSpec('cmd_print_text',           2, 2),
+    'print_attr':           CommandSpec('cmd_print_attr',           3, 3),
+    'echo':                 CommandSpec('cmd_echo',                 0, None),
+
+    # Cookie
+    'cookie_set':           CommandSpec('cmd_cookie_set',           2, 2),
+    'cookies_set':          CommandSpec('cmd_cookies_set',          1, 1),
+    'cookie_get':           CommandSpec('cmd_cookie_get',           1, 1),
+    'cookie_delete':        CommandSpec('cmd_cookie_delete',        1, 1),
+    'cookie_clear':         CommandSpec('cmd_cookie_clear',         0, 0),
+
+    # 其他
+    'sleep':                CommandSpec('cmd_sleep',                1, 1),
+    'pause':                CommandSpec('cmd_pause',                0, 0),
+    'keep_open':            CommandSpec('cmd_keep_open',            0, 0),
+}
+
 VERSION = "v1.0.0"
 
-SEARCH: Dict[str, By] = {
+SEARCH: Dict[str, str] = {
     'XPATH': By.XPATH,
     'CSS': By.CSS_SELECTOR,
     'ID': By.ID,
@@ -233,7 +326,7 @@ def build_driver(name: str, driver_path: str, ua: str, user_data: str, profile_d
             netlog_path = str(Path(netlog_path).expanduser().resolve())
             Path(netlog_path).parent.mkdir(parents=True, exist_ok=True)
             options.add_argument(f'--log-net-log={netlog_path}')
-            options.add_argument('--net-log-capture-mode=IncludeCookiesAndCredentials')
+            options.add_argument('--net-log-capture-mode=IncludeSensitive')
 
         service = EdgeService(executable_path=driver_path) if driver_path else EdgeService()
         return webdriver.Edge(service=service, options=options)
@@ -269,7 +362,7 @@ def build_driver(name: str, driver_path: str, ua: str, user_data: str, profile_d
             netlog_path = str(Path(netlog_path).expanduser().resolve())
             Path(netlog_path).parent.mkdir(parents=True, exist_ok=True)
             options.add_argument(f'--log-net-log={netlog_path}')
-            options.add_argument('--net-log-capture-mode=IncludeCookiesAndCredentials')
+            options.add_argument('--net-log-capture-mode=IncludeSensitive')
 
         service = ChromeService(executable_path=driver_path) if driver_path else ChromeService()
         return webdriver.Chrome(service=service, options=options)
@@ -297,13 +390,14 @@ class CommandExecutor:
         self.default_timeout = default_timeout
         self._keep_open = False
         self.user_agent = user_agent
+        self.cmd_set = {}
 
     @property
     def keep_open(self) -> bool:
         return self._keep_open
 
     # 基础工具
-    def _get_by(self, key: str) -> By:
+    def _get_by(self, key: str) -> str:
         upper = key.upper()
         if upper not in SEARCH:
             raise KeyError(f'查询方式错误 -> {key}')
@@ -372,6 +466,149 @@ class CommandExecutor:
         seq = self._parse_keys(list(keys_tokens))
         el.send_keys(*seq)
 
+    def cmd_write_ce(self, by_key: str, selector: str, *text_parts: str):
+        el = self._find(by_key, selector)
+        text = ' '.join(text_parts)
+
+        # 滚动并聚焦，提升可交互性
+        try:
+            self.driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center', inline:'nearest'});", el
+            )
+        except Exception:
+            pass
+
+        self.driver.execute_script("""
+            const el = arguments[0];
+            const text = arguments[1];
+
+            // 尝试聚焦
+            try { el.focus(); } catch (e) {}
+
+            // 若非 contenteditable，也尽量按 textbox 处理
+            const isCE = (el.isContentEditable === true) ||
+                        (el.getAttribute && el.getAttribute('contenteditable') === 'true') ||
+                        (el.getAttribute && el.getAttribute('role') === 'textbox');
+
+            // 清空原内容
+            try {
+                const sel = window.getSelection && window.getSelection();
+                if (sel && sel.rangeCount) sel.removeAllRanges();
+
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                if (sel) sel.addRange(range);
+
+                document.execCommand('delete');
+            } catch (e) {
+                // fallback: 置空
+                try { el.innerText = ''; } catch (e2) {}
+            }
+
+            // 写入文本
+            let ok = false;
+            try {
+                ok = document.execCommand && document.execCommand('insertText', false, text);
+            } catch (e) {}
+
+            if (!ok) {
+                // 兜TMD底
+                try { el.innerText = text; } catch (e) { try { el.textContent = text; } catch (e2) {} }
+                try {
+                    el.dispatchEvent(new InputEvent('input', {bubbles:true, cancelable:true, inputType:'insertText', data:text}));
+                } catch (e) {
+                    el.dispatchEvent(new Event('input', {bubbles:true}));
+                }
+                el.dispatchEvent(new Event('change', {bubbles:true}));
+            }
+        """, el, text)
+    
+    def cmd_write_js(self, by_key: str, selector: str, *text_parts: str):
+        el = self._find(by_key, selector)
+        text = ' '.join(text_parts)
+
+        try:
+            self.driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center', inline:'nearest'});", el
+            )
+        except Exception:
+            pass
+
+        self.driver.execute_script("""
+            const el = arguments[0];
+            const text = arguments[1];
+
+            function setValueForInputLike(el, text) {
+                const tag = el.tagName ? el.tagName.toLowerCase() : '';
+                const isInput = tag === 'input';
+                const isTA = tag === 'textarea';
+
+                if (isInput || isTA) {
+                    // 使用原型 setter，兼容 React/Vue
+                    const proto = isInput ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+                    const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+                    if (desc && desc.set) {
+                        desc.set.call(el, text);
+                    } else {
+                        el.value = text;
+                    }
+                    // 触发事件
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+                return false;
+            }
+
+            function setForContentEditable(el, text) {
+                try { el.focus(); } catch (e) {}
+                // 清空
+                try {
+                    const sel = window.getSelection && window.getSelection();
+                    if (sel && sel.rangeCount) sel.removeAllRanges();
+                    const range = document.createRange();
+                    range.selectNodeContents(el);
+                    if (sel) sel.addRange(range);
+                    document.execCommand('delete');
+                } catch (e) {
+                    try { el.innerText = ''; } catch (e2) {}
+                }
+                // 插入
+                let ok = false;
+                try { ok = document.execCommand && document.execCommand('insertText', false, text); } catch (e) {}
+                if (!ok) {
+                    try { el.innerText = text; } catch (e) { try { el.textContent = text; } catch (e2) {} }
+                    try {
+                        el.dispatchEvent(new InputEvent('input', {bubbles:true, cancelable:true, inputType:'insertText', data:text}));
+                    } catch (e) {
+                        el.dispatchEvent(new Event('input', {bubbles:true}));
+                    }
+                    el.dispatchEvent(new Event('change', {bubbles:true}));
+                }
+            }
+
+            // 处理 input/textarea
+            if (setValueForInputLike(el, text)) {
+                try { el.focus(); } catch (e) {}
+                return;
+            }
+
+            // 处理 contenteditable/textbox
+            const isCE = (el.isContentEditable === true) ||
+                        (el.getAttribute && el.getAttribute('contenteditable') === 'true') ||
+                        (el.getAttribute && el.getAttribute('role') === 'textbox');
+            if (isCE) {
+                setForContentEditable(el, text);
+                return;
+            }
+
+            // 兜TMD底
+            try { el.focus(); } catch (e) {}
+            try { el.textContent = text; } catch (e) { try { el.innerText = text; } catch (e2) {} }
+            try { el.dispatchEvent(new Event('input', {bubbles:true})); } catch (e) {}
+            try { el.dispatchEvent(new Event('change', {bubbles:true})); } catch (e) {}
+        """, el, text)
+
     def cmd_drag_drop(self, by_src: str, sel_src: str, by_dst: str, sel_dst: str):
         src = self._find(by_src, sel_src)
         dst = self._find(by_dst, sel_dst)
@@ -439,31 +676,31 @@ class CommandExecutor:
         self.driver.close()
 
     # 等待（Explicit Wait）
-    def cmd_wait_present(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_present(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.presence_of_element_located((self._get_by(by_key), selector)))
 
-    def cmd_wait_visible(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_visible(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.visibility_of_element_located((self._get_by(by_key), selector)))
 
-    def cmd_wait_clickable(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_clickable(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.element_to_be_clickable((self._get_by(by_key), selector)))
 
-    def cmd_wait_invisible(self, by_key: str, selector: str, timeout: str = None):
+    def cmd_wait_invisible(self, by_key: str, selector: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.invisibility_of_element_located((self._get_by(by_key), selector)))
 
-    def cmd_wait_text(self, by_key: str, selector: str, text: str, timeout: str = None):
+    def cmd_wait_text(self, by_key: str, selector: str, text: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.text_to_be_present_in_element((self._get_by(by_key), selector), text))
 
-    def cmd_wait_url_contains(self, substr: str, timeout: str = None):
+    def cmd_wait_url_contains(self, substr: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.url_contains(substr))
 
-    def cmd_wait_title_contains(self, substr: str, timeout: str = None):
+    def cmd_wait_title_contains(self, substr: str, timeout: str = ""):
         t = parse_int(timeout, 'timeout') if timeout else None
         self._wait(t).until(EC.title_contains(substr))
 
@@ -582,8 +819,6 @@ class CommandExecutor:
     # 运行一行命令
     def run_line(self, line: str):
         s = line.strip()
-
-        # 注释
         if not s or s.startswith('#'):
             return
 
@@ -595,149 +830,34 @@ class CommandExecutor:
         cmd = ALIASES.get(raw_cmd, raw_cmd).lower()
 
         try:
-            # 元素点击与输入
-            if cmd == 'click':
-                self.cmd_click(parts[1], parts[2])
-            elif cmd == 'rclick':
-                self.cmd_rclick(parts[1], parts[2])
-            elif cmd == 'dclick':
-                self.cmd_dclick(parts[1], parts[2])
-            elif cmd == 'hover':
-                self.cmd_hover(parts[1], parts[2])
-            elif cmd == 'click_js':
-                self.cmd_click_js(parts[1], parts[2])
-            elif cmd == 'clear':
-                self.cmd_clear(parts[1], parts[2])
-            elif cmd == 'write':
-                self.cmd_write(parts[1], parts[2], *parts[3:])
-            elif cmd == 'send_keys':
-                self.cmd_send_keys(parts[1], parts[2], *parts[3:])
-            elif cmd == 'press':
-                self.cmd_press(*parts[1:])
-
-            # 拖拽
-            elif cmd == 'drag_drop':
-                self.cmd_drag_drop(parts[1], parts[2], parts[3], parts[4])
-            elif cmd == 'drag_offset':
-                self.cmd_drag_offset(parts[1], parts[2], parts[3], parts[4])
-
-            # 导航
-            elif cmd == 'goto':
-                self.cmd_goto(parts[1])
-            elif cmd == 'back':
-                self.cmd_back()
-            elif cmd == 'forward':
-                self.cmd_forward()
-            elif cmd == 'refresh':
-                self.cmd_refresh()
-            elif cmd == 'maximize':
-                self.cmd_maximize()
-            elif cmd == 'minimize':
-                self.cmd_minimize()
-            elif cmd == 'set_window':
-                self.cmd_set_window(parts[1], parts[2])
-
-            # Frame
-            elif cmd == 'frame':
-                self.cmd_frame(parts[1], parts[2])
-            elif cmd == 'frame_index':
-                self.cmd_frame_index(parts[1])
-            elif cmd == 'frame_parent':
-                self.cmd_frame_parent()
-            elif cmd == 'frame_default':
-                self.cmd_frame_default()
-
-            # 窗口
-            elif cmd == 'window_latest':
-                self.cmd_window_latest()
-            elif cmd == 'window_index':
-                self.cmd_window_index(parts[1])
-            elif cmd == 'window_close':
-                self.cmd_window_close()
-
-            # 等待
-            elif cmd == 'wait_present':
-                self.cmd_wait_present(parts[1], parts[2], parts[3] if len(parts) > 3 else None)
-            elif cmd == 'wait_visible':
-                self.cmd_wait_visible(parts[1], parts[2], parts[3] if len(parts) > 3 else None)
-            elif cmd == 'wait_clickable':
-                self.cmd_wait_clickable(parts[1], parts[2], parts[3] if len(parts) > 3 else None)
-            elif cmd == 'wait_invisible':
-                self.cmd_wait_invisible(parts[1], parts[2], parts[3] if len(parts) > 3 else None)
-            elif cmd == 'wait_text':
-                # wait_text <BY> <selector> "<text>" [timeout]
-                if len(parts) == 5:
-                    self.cmd_wait_text(parts[1], parts[2], parts[3], parts[4])
-                else:
-                    self.cmd_wait_text(parts[1], parts[2], parts[3])
-            elif cmd == 'wait_url_contains':
-                self.cmd_wait_url_contains(parts[1], parts[2] if len(parts) > 2 else None)
-            elif cmd == 'wait_title_contains':
-                self.cmd_wait_title_contains(parts[1], parts[2] if len(parts) > 2 else None)
-
-            # 滚动
-            elif cmd == 'scroll_into_view':
-                self.cmd_scroll_into_view(parts[1], parts[2], parts[3] if len(parts) > 3 else 'center')
-            elif cmd == 'scroll_by':
-                self.cmd_scroll_by(parts[1], parts[2])
-            elif cmd == 'scroll_top':
-                self.cmd_scroll_top()
-            elif cmd == 'scroll_bottom':
-                self.cmd_scroll_bottom()
-
-            # 下拉选择
-            elif cmd == 'select':
-                self.cmd_select(parts[1], parts[2], parts[3], parts[4])
-
-            # 上传/截图/JS
-            elif cmd == 'upload':
-                self.cmd_upload(parts[1], parts[2], parts[3])
-            elif cmd == 'screenshot':
-                self.cmd_screenshot(parts[1])
-            elif cmd == 'screenshot_element':
-                self.cmd_screenshot_element(parts[1], parts[2], parts[3])
-            elif cmd == 'exec_js':
-                self.cmd_exec_js(join_rest(parts, 1))
-
-            # 断言/打印
-            elif cmd == 'assert_text':
-                self.cmd_assert_text(parts[1], parts[2], join_rest(parts, 3))
-            elif cmd == 'assert_url_contains':
-                self.cmd_assert_url_contains(join_rest(parts, 1))
-            elif cmd == 'assert_title_contains':
-                self.cmd_assert_title_contains(join_rest(parts, 1))
-            elif cmd == 'print_text':
-                self.cmd_print_text(parts[1], parts[2])
-            elif cmd == 'print_attr':
-                self.cmd_print_attr(parts[1], parts[2], parts[3])
-            elif cmd == 'echo':
-                self.cmd_echo(*parts[1:])
-
-            # Cookie
-            elif cmd == 'cookie_set':
-                self.cmd_cookie_set(parts[1], parts[2])
-            elif cmd == 'cookies_set':
-                self.cmd_cookies_set(parts[1])
-            elif cmd == 'cookie_get':
-                self.cmd_cookie_get(parts[1])
-            elif cmd == 'cookie_delete':
-                self.cmd_cookie_delete(parts[1])
-            elif cmd == 'cookie_clear':
-                self.cmd_cookie_clear()
-
-            # 其他
-            elif cmd == 'sleep':
-                self.cmd_sleep(parts[1])
-            elif cmd == 'pause':
-                self.cmd_pause()
-            elif cmd == 'keep_open':
-                self.cmd_keep_open()
-
-            else:
+            spec = COMMAND_SPECS.get(cmd)
+            if not spec:
                 raise ValueError(f'非法指令！ -> {raw_cmd}')
 
-        except IndexError:
-            raise ValueError(f'参数不足 -> {s}')
+            # 准备参数（不含命令名）
+            args = parts[1:]
+
+            # 当需要把尾部参数合并成一个时
+            if spec.join_from is not None:
+                if len(args) < spec.join_from:
+                    raise ValueError(f'参数不足 -> {s}')
+                head = args[:spec.join_from]
+                tail = ' '.join(args[spec.join_from:]) if len(args) > spec.join_from else ''
+                args = head + ([tail] if tail != '' or spec.min_args - len(head) == 1 else [])
+
+            # 校验参数个数
+            argc = len(args)
+            if argc < spec.min_args:
+                raise ValueError(f'参数不足 -> {s}')
+            if spec.max_args is not None and argc > spec.max_args:
+                raise ValueError(f'参数过多 -> {s}')
+
+            # 反射调用目标方法
+            func = getattr(self, spec.func, None)
+            if not callable(func):
+                raise RuntimeError(f'内部错误：未实现方法 {spec.func}')
+            func(*args)
+
         except KeyError as e:
             raise ValueError(str(e))
         except selerr.NoSuchElementException:
@@ -748,6 +868,8 @@ class CommandExecutor:
             raise RuntimeError(f'不可交互 -> {s}')
         except selerr.InvalidArgumentException:
             raise RuntimeError(f'无效参数 -> {s}')
+        except selerr.TimeoutException:
+            raise RuntimeError(f'等待超时 -> {s}')
 
     def run_file(self, command_path: str):
         p = Path(command_path)
