@@ -4,5 +4,6 @@
   --driver-path .\msedgedriver.exe ^
   --commands .\command\cmd1.txt ^
   --maximize ^
+  --error-no-exit ^
   --netlog "%CD%\logs\netlog.json"
 pause

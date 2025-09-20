@@ -1010,7 +1010,7 @@ def main():
     except Exception as e:
         print(f'[错误] {e}', file=sys.stderr)
         if args.error_no_exit:
-            print('执行完成，保持打开。按 Ctrl+C 退出，或关闭浏览器窗口。')
+            print('发生错误，保持打开。按 Ctrl+C 退出，或关闭浏览器窗口。')
             try:
                 while True:
                     time.sleep(1)
