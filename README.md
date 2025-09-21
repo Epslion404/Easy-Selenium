@@ -667,6 +667,14 @@
   keep_open
   ```
 
+### set_var
+- 语法：`set_var <name> <value>`
+- 说明：设置变量的值，如果不存在则创建并设置，使用变量的方法为`${<变量名>}`
+- 示例：
+  ```text
+  set_var url https://example.com
+  ```
+
 ---
 
 ## BY 与选择器示例
