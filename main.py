@@ -32,6 +32,7 @@
 import argparse
 import sys
 import re
+import os
 import time
 import shlex
 from pathlib import Path
@@ -1000,6 +1001,8 @@ def main():
         # profile-data：对于“新建目录”请不要强制传；若你要复用真实目录才需要。
         final_profile = args.profile_data if args.profile_data else ""
 
+        if not os.path.exists(args.driver_path):
+            raise ValueError(f"找不到浏览器驱动 -> {args.driver_path}")
         
         driver = build_driver(
             args.driver,
