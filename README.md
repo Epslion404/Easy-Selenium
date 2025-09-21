@@ -306,7 +306,7 @@
 
 ### goto
 - 语法：`goto <url>`
-- 说明：跳转到指定 URL
+- 说明：跳转到指定 URL，一定要带上"https://"等协议头
 - 示例：
   ```text
   goto https://example.com/login
